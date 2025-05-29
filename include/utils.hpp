@@ -6,6 +6,8 @@
 #include <queue>
 #include <tuple>
 #include <algorithm>
+#include <limits>
+#include <map>
 
 namespace geometryUtils
 {
@@ -14,11 +16,16 @@ namespace geometryUtils
     {
         double x, y, z;
         Point3D(double x, double y, double z) : x(x), y(y), z(z) {}
+        bool operator==(const Point3D &other) const
+        {
+            return std::abs(x - other.x) < 1e-8 && std::abs(y - other.y) < 1e-8 && std::abs(z - other.z) < 1e-8;
+        }
     };
 
     struct Triangle
     {
         int a, b, c;
+        Triangle(int a, int b, int c) : a(a), b(b), c(c) {}
     };
 
     Point3D cross(const Point3D &u, const Point3D &v)
@@ -42,6 +49,14 @@ namespace geometryUtils
     Point3D normal(const Point3D &a, const Point3D &b, const Point3D &c)
     {
         return cross(subtract(b, a), subtract(c, a));
+    }
+
+    Point3D normalize(const Point3D &v)
+    {
+        double length = sqrt(v.x * v.x + v.y * v.y + v.z * v.z);
+        if (length < 1e-10)
+            return Point3D(0, 0, 0); // Avoid division by zero
+        return Point3D(v.x / length, v.y / length, v.z / length);
     }
 
     bool allSameSide(const std::vector<Point3D> &points, const Triangle &t)
@@ -75,71 +90,76 @@ namespace geometryUtils
 
     std::tuple<int, int, int> findInitialTriangle(const std::vector<Point3D> &points)
     {
-        int n = points.size();
-        if (n < 3)
-            throw std::runtime_error("Not enough points for a triangle.");
-
-        // 1. Find the point with the lowest x coordinate
         int i0 = 0;
-        for (int i = 1; i < n; ++i)
+        int i1 = 0;
+        int i2 = 0;
+
+        for (int i = 0; i < points.size(); ++i)
         {
-            if (points[i].x < points[i0].x)
+            if (points.at(i).z < points.at(i0).z)
+            {
                 i0 = i;
+            }
         }
 
-        // 2. Find the farthest point from i0
-        int i1 = (i0 == 0) ? 1 : 0;
-        double maxDist = 0;
-        for (int i = 0; i < n; ++i)
+        double min_angle = std::numeric_limits<double>::max();
+        for (int i = 0; i < points.size(); ++i)
         {
             if (i == i0)
                 continue;
-            double dist = std::pow(points[i].x - points[i0].x, 2) +
-                          std::pow(points[i].y - points[i0].y, 2) +
-                          std::pow(points[i].z - points[i0].z, 2);
-            if (dist > maxDist)
+            Point3D v = subtract(points.at(i), points.at(i0));
+            double angle = std::atan2(v.z, v.y);
+            // dot(subtract(points.at(i), points.at(i0)), subtract(points.at(i), points.at(i0)));
+            if (angle < min_angle)
             {
-                maxDist = dist;
+                min_angle = angle;
                 i1 = i;
             }
         }
 
-        // 3. Find a third point not collinear with i0 and i1
-        int i2 = -1;
-        for (int i = 0; i < n; ++i)
+        double max_angle = -std::numeric_limits<double>::max();
+        Point3D v1 = subtract(points.at(i1), points.at(i0));
+        Point3D aux(0, 0, 1);
+        Point3D ortho = cross(v1, aux);
+        ortho = normalize(ortho);
+        Point3D ref_normal = ortho;
+        if (std::abs(v1.x) < 1e-8 && std::abs(v1.y) < 1e-8)
+        {
+            aux = Point3D(0, 1, 0);
+        }
+        for (int i = 0; i < points.size(); ++i)
         {
             if (i == i0 || i == i1)
                 continue;
-            Point3D nrm = cross(subtract(points[i1], points[i0]), subtract(points[i], points[i0]));
-            if (dot(nrm, nrm) > 1e-8)
+            Point3D candidate_normal = cross(v1, subtract(points.at(i), points.at(i0)));
+            double norm = std::sqrt(dot(candidate_normal, candidate_normal));
+            if (norm < 1e-10)
+                continue; // Skip colinear points
+
+            candidate_normal = normalize(candidate_normal);
+            double angle = dot(ref_normal, candidate_normal);
+            if (angle > max_angle)
             {
+                max_angle = angle;
                 i2 = i;
-                break;
             }
         }
-        if (i2 == -1)
-            throw std::runtime_error("All points are collinear.");
-
-        // 4. Orient the triangle so the normal points outward
-        Point3D centroid = {0, 0, 0};
-        for (const auto &p : points)
-        {
-            centroid.x += p.x;
-            centroid.y += p.y;
-            centroid.z += p.z;
-        }
-        centroid.x /= n;
-        centroid.y /= n;
-        centroid.z /= n;
-
-        Point3D nrm = normal(points[i0], points[i1], points[i2]);
-        Point3D toCentroid = subtract(centroid, points[i0]);
-        if (dot(nrm, toCentroid) > 0)
-        {
-            std::swap(i1, i2);
-        }
-
         return std::make_tuple(i0, i1, i2);
+    }
+
+    bool isFaceExplored(const Triangle &face, std::map<std::pair<int, int>, std::vector<int>> edgeToFaces)
+    {
+        std::vector<std::pair<int, int>> edges = {
+            {std::min(face.a, face.b), std::max(face.a, face.b)},
+            {std::min(face.b, face.c), std::max(face.b, face.c)},
+            {std::min(face.c, face.a), std::max(face.c, face.a)}};
+
+        for (auto &e : edges)
+        {
+            if (edgeToFaces.at(e).size() < 2)
+                return false; // Ainda falta uma face adjacente nessa aresta
+        }
+        return true;
     }
 
     std::vector<Triangle> giftWrapping(const std::vector<Point3D> &points)
@@ -147,95 +167,77 @@ namespace geometryUtils
         std::vector<Triangle> faces;
         std::set<std::pair<int, int>> processedEdges;
         std::queue<std::pair<int, int>> edgeQueue;
-        std::set<std::tuple<int, int, int>> uniqueTriangles;
+        std::map<std::pair<int, int>, std::vector<int>> edgeToFaces;
 
         // Step 1: Find the initial triangle
-        auto [i0, i1, i2] = findInitialTriangle(points);
-        std::cout << "Initial triangle: (" << i0 << ", " << i1 << ", " << i2 << ")\n";
+        std::tuple<int, int, int> initialFace = findInitialTriangle(points);
 
-        // Step 2: Add the initial triangle's edges to the queue
-        edgeQueue.push({i0, i1});
-        edgeQueue.push({i1, i2});
-        edgeQueue.push({i2, i0});
+        int i0 = std::get<0>(initialFace);
+        int i1 = std::get<1>(initialFace);
+        int i2 = std::get<2>(initialFace);
+        faces.push_back(Triangle(i0, i1, i2));
+        int initialFaceIdx = 0;
+        std::vector<std::pair<int, int>> initialEdges = {
+            {std::min(i0, i1), std::max(i0, i1)},
+            {std::min(i1, i2), std::max(i1, i2)},
+            {std::min(i2, i0), std::max(i2, i0)}};
+        for (const auto &e : initialEdges)
+        {
+            edgeToFaces[e].push_back(initialFaceIdx);
+        }
 
-        // Step 3: Process edges to expand the hull
+        edgeQueue.push({std::get<0>(initialFace), std::get<1>(initialFace)});
+        edgeQueue.push({std::get<1>(initialFace), std::get<2>(initialFace)});
+        edgeQueue.push({std::get<2>(initialFace), std::get<0>(initialFace)});
+
         while (!edgeQueue.empty())
         {
             auto edge = edgeQueue.front();
             edgeQueue.pop();
+
+            processedEdges.insert(edge);
             int a = edge.first;
             int b = edge.second;
+            int bestCandidate = -1;
 
-            std::cout << "Processing edge: (" << a << ", " << b << ")\n";
+            Point3D p1p2 = subtract(points[b], points[a]);
+            double min_cos_theta = 2.0;
 
-            // Skip if the edge has already been processed
-            if (processedEdges.count(edge))
-                continue;
-            processedEdges.insert(edge);
-
-            int c = -1;
-            double maxDist = -1e9;
-
-            // Find the point `c` that forms the most outward triangle with edge (a, b)
             for (int i = 0; i < points.size(); ++i)
             {
                 if (i == a || i == b)
-                    continue;
-
-                Triangle t = {a, b, i};
-                if (!allSameSide(points, t))
                 {
-                    std::cout << "Triangle (" << a << ", " << b << ", " << i << ") is not valid.\n";
                     continue;
                 }
-
-                Point3D n = normal(points[a], points[b], points[i]);
-                double normLen = std::sqrt(dot(n, n));
-                if (normLen < 1e-8)
-                    continue;
-
-                double dist = std::abs(dot(n, subtract(points[i], points[a]))) / normLen;
-                if (dist > maxDist)
+                Triangle tri(a, b, i);
+                if (isFaceExplored(tri, edgeToFaces))
                 {
-                    maxDist = dist;
-                    c = i;
+                    continue; // Skip if the face is already explored
+                }
+                Point3D p1p = subtract(points.at(i), points.at(a));
+                Point3D np = cross(p1p, p1p2);
+                np = normalize(np);
+                Point3D n = normalize(normal(points.at(a), points.at(b), points.at(i)));
+                double cos_theta = dot(n, np);
+                if (cos_theta < min_cos_theta)
+                {
+                    min_cos_theta = cos_theta;
+                    bestCandidate = i;
                 }
             }
+            faces.push_back(Triangle(a, b, bestCandidate));
 
-            if (c == -1)
+            int newFaceIdx = faces.size() - 1;
+            std::vector<std::pair<int, int>> edgesOfNewFace = {
+                {std::min(a, b), std::max(a, b)},
+                {std::min(b, bestCandidate), std::max(b, bestCandidate)},
+                {std::min(bestCandidate, a), std::max(bestCandidate, a)}};
+
+            for (const auto &e : edgesOfNewFace)
             {
-                std::cout << "No valid third point found for edge (" << a << ", " << b << ").\n";
-                continue;
-            }
-
-            // Add the triangle if it's unique
-            std::vector<int> indices = {a, b, c};
-            std::sort(indices.begin(), indices.end());
-            auto key = std::make_tuple(indices[0], indices[1], indices[2]);
-
-            if (uniqueTriangles.count(key) == 0)
-            {
-                uniqueTriangles.insert(key);
-                faces.push_back({a, b, c});
-                std::cout << "Adding triangle: (" << a << ", " << b << ", " << c << ")\n";
-
-                // Add the new edges to the queue
-                std::pair<int, int> edge1 = {std::min(a, c), std::max(a, c)};
-                std::pair<int, int> edge2 = {std::min(b, c), std::max(b, c)};
-
-                if (!processedEdges.count(edge1))
-                {
-                    std::cout << "Adding edge: (" << edge1.first << ", " << edge1.second << ")\n";
-                    edgeQueue.push(edge1);
-                }
-                if (!processedEdges.count(edge2))
-                {
-                    std::cout << "Adding edge: (" << edge2.first << ", " << edge2.second << ")\n";
-                    edgeQueue.push(edge2);
-                }
+                edgeToFaces[e].push_back(newFaceIdx);
             }
         }
-
         return faces;
     }
 
