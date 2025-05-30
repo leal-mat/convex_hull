@@ -156,7 +156,7 @@ namespace geometryUtils
 
         for (auto &e : edges)
         {
-            if (edgeToFaces.at(e).size() < 2)
+            if (edgeToFaces[e].size() < 2)
                 return false; // Ainda falta uma face adjacente nessa aresta
         }
         return true;
@@ -166,6 +166,7 @@ namespace geometryUtils
     {
         std::vector<Triangle> faces;
         std::set<std::pair<int, int>> processedEdges;
+        std::set<std::tuple<int, int, int>> uniqueFaces;
         std::queue<std::pair<int, int>> edgeQueue;
         std::map<std::pair<int, int>, std::vector<int>> edgeToFaces;
 
@@ -178,9 +179,9 @@ namespace geometryUtils
         faces.push_back(Triangle(i0, i1, i2));
         int initialFaceIdx = 0;
         std::vector<std::pair<int, int>> initialEdges = {
-            {std::min(i0, i1), std::max(i0, i1)},
-            {std::min(i1, i2), std::max(i1, i2)},
-            {std::min(i2, i0), std::max(i2, i0)}};
+            {i0, i1},
+            {i1, i2},
+            {i2, i0}};
         for (const auto &e : initialEdges)
         {
             edgeToFaces[e].push_back(initialFaceIdx);
@@ -194,8 +195,7 @@ namespace geometryUtils
         {
             auto edge = edgeQueue.front();
             edgeQueue.pop();
-
-            processedEdges.insert(edge);
+            // processedEdges.insert(edge);
             int a = edge.first;
             int b = edge.second;
             int bestCandidate = -1;
@@ -216,26 +216,34 @@ namespace geometryUtils
                 }
                 Point3D p1p = subtract(points.at(i), points.at(a));
                 Point3D np = cross(p1p, p1p2);
-                np = normalize(np);
-                Point3D n = normalize(normal(points.at(a), points.at(b), points.at(i)));
-                double cos_theta = dot(n, np);
-                if (cos_theta < min_cos_theta)
+                Point3D n = normal(points.at(a), points.at(b), points.at(i));
+                double cos_theta = -dot(np, n) / (std::sqrt(dot(np, np)) * std::sqrt(dot(n, n)));
+                if (cos_theta < min_cos_theta && allSameSide(points, tri))
                 {
                     min_cos_theta = cos_theta;
                     bestCandidate = i;
                 }
             }
-            faces.push_back(Triangle(a, b, bestCandidate));
-
-            int newFaceIdx = faces.size() - 1;
-            std::vector<std::pair<int, int>> edgesOfNewFace = {
-                {std::min(a, b), std::max(a, b)},
-                {std::min(b, bestCandidate), std::max(b, bestCandidate)},
-                {std::min(bestCandidate, a), std::max(bestCandidate, a)}};
-
-            for (const auto &e : edgesOfNewFace)
+            if (bestCandidate != -1)
             {
-                edgeToFaces[e].push_back(newFaceIdx);
+
+                std::vector<int> tri = {a, b, bestCandidate};
+
+                int newFaceIdx = faces.size() - 1;
+                std::vector<std::pair<int, int>> edgesOfNewFace = {
+                    {std::min(a, b), std::max(a, b)},
+                    {std::min(b, bestCandidate), std::max(b, bestCandidate)},
+                    {std::min(bestCandidate, a), std::max(bestCandidate, a)}};
+
+                for (const auto &e : edgesOfNewFace)
+                {
+                    edgeToFaces[e].push_back(newFaceIdx);
+                    if (edgeToFaces[e].size() < 2)
+                    {
+                        faces.push_back(Triangle(a, b, bestCandidate));
+                        edgeQueue.push(e);
+                    }
+                }
             }
         }
         return faces;

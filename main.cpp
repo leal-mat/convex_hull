@@ -55,6 +55,12 @@ int main()
     std::string inputFile = "../input_files/cube.obj";
     std::string outputFile = "../output_files/cube_hull.obj";
 
+    // std::string inputFile = "../input_files/cube.obj";
+    // std::string outputFile = "../output_files/cube_hull.obj";
+
+    // std::string inputFile = "../input_files/tetrahedron.obj";
+    // std::string outputFile = "../output_files/tetrahedron_hull.obj";
+
     auto points = loadObj(inputFile);
     if (points.size() < 4)
     {
