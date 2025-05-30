@@ -63,7 +63,7 @@ namespace geometryUtils
     {
         Point3D n = normal(points[t.a], points[t.b], points[t.c]);
         int sign = 0;
-        const double epsilon = 1e-8; // Tolerance for floating-point comparisons
+        const double epsilon = 1e-6; // Tolerance for floating-point comparisons
 
         for (int i = 0; i < points.size(); ++i)
         {
@@ -162,6 +162,21 @@ namespace geometryUtils
         return true;
     }
 
+    void printEdgesToFaces(const std::map<std::pair<int, int>, std::vector<int>> &edgeToFaces)
+    {
+        for (const auto &entry : edgeToFaces)
+        {
+            const auto &edge = entry.first;
+            const auto &faces = entry.second;
+            std::cout << "Edge (" << edge.first << ", " << edge.second << ") is shared by faces: ";
+            for (int faceIdx : faces)
+            {
+                std::cout << faceIdx << " ";
+            }
+            std::cout << std::endl;
+        }
+    }
+
     std::vector<Triangle> giftWrapping(const std::vector<Point3D> &points)
     {
         std::vector<Triangle> faces;
@@ -216,9 +231,13 @@ namespace geometryUtils
                 }
                 Point3D p1p = subtract(points.at(i), points.at(a));
                 Point3D np = cross(p1p, p1p2);
-                Point3D n = normal(points.at(a), points.at(b), points.at(i));
+                auto currentFace = faces.at(faces.size() - 1);
+                Point3D n = normal(points.at(currentFace.a), points.at(currentFace.b), points.at(currentFace.c));
                 double cos_theta = -dot(np, n) / (std::sqrt(dot(np, np)) * std::sqrt(dot(n, n)));
-                if (cos_theta < min_cos_theta && allSameSide(points, tri))
+                bool sameSide = allSameSide(points, tri);
+                std::cout << "Edge (" << a << "," << b << "), candidate " << i
+                          << ", cos_theta=" << cos_theta << ", allSameSide=" << sameSide << std::endl;
+                if (cos_theta < min_cos_theta && sameSide)
                 {
                     min_cos_theta = cos_theta;
                     bestCandidate = i;
@@ -229,23 +248,33 @@ namespace geometryUtils
 
                 std::vector<int> tri = {a, b, bestCandidate};
 
-                int newFaceIdx = faces.size() - 1;
-                std::vector<std::pair<int, int>> edgesOfNewFace = {
-                    {std::min(a, b), std::max(a, b)},
-                    {std::min(b, bestCandidate), std::max(b, bestCandidate)},
-                    {std::min(bestCandidate, a), std::max(bestCandidate, a)}};
-
-                for (const auto &e : edgesOfNewFace)
+                std::sort(tri.begin(), tri.end());
+                auto triTuple = std::make_tuple(tri[0], tri[1], tri[2]);
+                if (uniqueFaces.find(triTuple) == uniqueFaces.end())
                 {
-                    edgeToFaces[e].push_back(newFaceIdx);
-                    if (edgeToFaces[e].size() < 2)
+                    faces.push_back(Triangle(a, b, bestCandidate));
+                    uniqueFaces.insert(triTuple);
+
+                    int newFaceIdx = faces.size() - 1;
+                    std::vector<std::pair<int, int>> edgesOfNewFace = {
+                        {std::min(a, b), std::max(a, b)},
+                        {std::min(b, bestCandidate), std::max(b, bestCandidate)},
+                        {std::min(bestCandidate, a), std::max(bestCandidate, a)}};
+
+                    for (const auto &e : edgesOfNewFace)
                     {
-                        faces.push_back(Triangle(a, b, bestCandidate));
-                        edgeQueue.push(e);
+                        edgeToFaces[e].push_back(newFaceIdx);
+                        if (edgeToFaces[e].size() < 2)
+                        {
+                            edgeQueue.push(e);
+                        }
                     }
                 }
             }
         }
+
+        printEdgesToFaces(edgeToFaces);
+
         return faces;
     }
 
