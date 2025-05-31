@@ -177,6 +177,13 @@ namespace geometryUtils
         }
     }
 
+    bool isCoplanar(const Triangle &t1, const Triangle &t2, const std::vector<Point3D> &points, double epsilon = 1e-6)
+    {
+        Point3D n1 = normalize(normal(points[t1.a], points[t1.b], points[t1.c]));
+        Point3D n2 = normalize(normal(points[t2.a], points[t2.b], points[t2.c]));
+        return std::abs(dot(n1, n2)) > 1.0 - epsilon;
+    }
+
     std::vector<Triangle> giftWrapping(const std::vector<Point3D> &points)
     {
         std::vector<Triangle> faces;
@@ -227,12 +234,32 @@ namespace geometryUtils
                 Triangle tri(a, b, i);
                 if (isFaceExplored(tri, edgeToFaces))
                 {
-                    continue; // Skip if the face is already explored
+                    continue;
                 }
                 Point3D p1p = subtract(points.at(i), points.at(a));
                 Point3D np = cross(p1p, p1p2);
-                auto currentFace = faces.at(faces.size() - 1);
-                Point3D n = normal(points.at(currentFace.a), points.at(currentFace.b), points.at(currentFace.c));
+
+                int faceIndex = -1;
+                for (int idx : edgeToFaces[{std::min(a, b), std::max(a, b)}])
+                {
+                    Triangle currentFace = faces[idx];
+                    if ((currentFace.a == a && currentFace.b == b) || (currentFace.b == a && currentFace.c == b) || (currentFace.c == a && currentFace.a == b) ||
+                        (currentFace.a == b && currentFace.b == a) || (currentFace.b == b && currentFace.c == a) || (currentFace.c == b && currentFace.a == a))
+                    {
+                        faceIndex = idx;
+                        break;
+                    }
+                }
+                if (faceIndex == -1)
+                {
+                    continue;
+                }
+
+                const Triangle &knownFace = faces[faceIndex];
+                int c = (knownFace.a != a && knownFace.a != b) ? knownFace.a : (knownFace.b != a && knownFace.b != b) ? knownFace.b
+                                                                                                                      : knownFace.c;
+
+                Point3D n = normal(points[a], points[b], points[c]);
                 double cos_theta = -dot(np, n) / (std::sqrt(dot(np, np)) * std::sqrt(dot(n, n)));
                 bool sameSide = allSameSide(points, tri);
                 std::cout << "Edge (" << a << "," << b << "), candidate " << i
@@ -247,7 +274,6 @@ namespace geometryUtils
             {
 
                 std::vector<int> tri = {a, b, bestCandidate};
-
                 std::sort(tri.begin(), tri.end());
                 auto triTuple = std::make_tuple(tri[0], tri[1], tri[2]);
                 if (uniqueFaces.find(triTuple) == uniqueFaces.end())
@@ -263,10 +289,11 @@ namespace geometryUtils
 
                     for (const auto &e : edgesOfNewFace)
                     {
-                        edgeToFaces[e].push_back(newFaceIdx);
                         if (edgeToFaces[e].size() < 2)
                         {
-                            edgeQueue.push(e);
+                            edgeToFaces[e].push_back(newFaceIdx);
+                            if (edgeToFaces[e].size() < 2)
+                                edgeQueue.push(e);
                         }
                     }
                 }
