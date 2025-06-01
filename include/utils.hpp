@@ -184,6 +184,52 @@ namespace geometryUtils
         return std::abs(dot(n1, n2)) > 1.0 - epsilon;
     }
 
+    std::vector<Triangle> minimalConvexHullTriangles(
+        const std::vector<Triangle> &faces,
+        const std::vector<Point3D> &points,
+        double epsilon = 1e-6)
+    {
+        std::vector<bool> used(faces.size(), false);
+        std::vector<Triangle> result;
+
+        for (size_t i = 0; i < faces.size(); ++i)
+        {
+            if (used[i])
+                continue;
+            std::vector<int> group = {static_cast<int>(i)};
+            used[i] = true;
+
+            // Agrupa triângulos coplanares e adjacentes
+            for (size_t j = i + 1; j < faces.size(); ++j)
+            {
+                if (used[j])
+                    continue;
+                if (isCoplanar(faces[i], faces[j], points, epsilon))
+                {
+                    // Verifica se compartilham uma aresta
+                    int shared = 0;
+                    std::vector<int> vi = {faces[i].a, faces[i].b, faces[i].c};
+                    std::vector<int> vj = {faces[j].a, faces[j].b, faces[j].c};
+                    for (int x : vi)
+                        for (int y : vj)
+                            if (x == y)
+                                shared++;
+                    if (shared == 2)
+                    {
+                        group.push_back(static_cast<int>(j));
+                        used[j] = true;
+                    }
+                }
+            }
+            // Mantém apenas os dois primeiros triângulos do grupo (triangulação mínima)
+            for (size_t k = 0; k < std::min(group.size(), size_t(2)); ++k)
+            {
+                result.push_back(faces[group[k]]);
+            }
+        }
+        return result;
+    }
+
     std::vector<Triangle> giftWrapping(const std::vector<Point3D> &points)
     {
         std::vector<Triangle> faces;
@@ -217,7 +263,6 @@ namespace geometryUtils
         {
             auto edge = edgeQueue.front();
             edgeQueue.pop();
-            // processedEdges.insert(edge);
             int a = edge.first;
             int b = edge.second;
             int bestCandidate = -1;
@@ -262,8 +307,8 @@ namespace geometryUtils
                 Point3D n = normal(points[a], points[b], points[c]);
                 double cos_theta = -dot(np, n) / (std::sqrt(dot(np, np)) * std::sqrt(dot(n, n)));
                 bool sameSide = allSameSide(points, tri);
-                std::cout << "Edge (" << a << "," << b << "), candidate " << i
-                          << ", cos_theta=" << cos_theta << ", allSameSide=" << sameSide << std::endl;
+                // std::cout << "Edge (" << a << "," << b << "), candidate " << i
+                //           << ", cos_theta=" << cos_theta << ", allSameSide=" << sameSide << std::endl;
                 if (cos_theta < min_cos_theta && sameSide)
                 {
                     min_cos_theta = cos_theta;
@@ -300,8 +345,8 @@ namespace geometryUtils
             }
         }
 
-        printEdgesToFaces(edgeToFaces);
-
+        // printEdgesToFaces(edgeToFaces);
+        // faces = minimalConvexHullTriangles(faces, points);
         return faces;
     }
 
